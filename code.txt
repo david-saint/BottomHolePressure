@@ -1,0 +1,112 @@
+import csv
+import math
+
+wells = []
+output = [['Well', 'Ppr', 'Tpr', 'P', 'Z']]
+
+# Get the wells and their parameters from wells.csv
+with open('wells.csv') as File:
+    reader = csv.DictReader(File)
+    for row in reader:
+        wells.append(row)
+
+# For Ideal case the Z = 1
+Z = 1
+
+# Get the a 
+def a(w):
+    Qgs = float(w["gor"]) * float(w["Qo"])
+    return ( (15.36 * float(w["Qs"]) * float(w["ys"])) + (84.93 * ( (float(w["yw"]) * float(w["Qw"])) + (float(w["Qo"]) * float(w["yo"])) )) + ( 0.0188 * float(w["yg"]) * Qgs) ) / ( float(w["T"]) * Qgs * Z)
+
+# Get the b
+def b(w):
+    Qgs = float(w["gor"]) * float(w["Qo"])
+    return ( (0.025 * float(w["Qs"])) + ( 1.38 * (float(w["Qw"]) + float(w["Qo"])) ) ) / ( float(w["T"]) * Qgs * Z )
+
+# Get the c
+def c(w):
+    Qgs = float(w["gor"]) * float(w["Qo"])
+    A = (3.141592 * (float(w["P_i"])**2)) / 4
+    return ( 0.00678 * float(w["T"]) * Qgs * Z ) / A
+
+# Get the d
+def d(w):
+    A = (3.141592 * (float(w["P_i"])**2)) / 4
+    return (0.00936 * (float(w["Qw"]) + float(w["Qo"]))) / A
+
+# Get the e
+def e(w):
+    ra = ( 2 * float(w["ep"]) ) / float(w["P_i"])
+    f = ( 1 / ( 1.74 - ( 2 * math.log10(ra) ) ) )**2
+    return f / ( 2 * 32.2 * float(w["P_i"]) )
+
+            
+# Newton Raphson's method function accepts the function, its derivative, starting point for x and epsalum
+def Newton(f, dfdx, x, eps):
+    f_value = f(x)
+    iteration_counter = 0
+    while abs(f_value) > eps and iteration_counter < 100:
+        try:
+            x = x - float(f_value)/dfdx(x)
+        except ZeroDivisionError:
+            print("Error! - derivative zero for x = ", x)
+            sys.exit(1)     # Abort with error
+
+        f_value = f(x)
+        iteration_counter += 1
+                                      
+    # Here, either a solution is found, or too many iterations
+    if abs(f_value) > eps:
+        iteration_counter = -1
+    return x
+
+
+for well in wells:
+    # Function to find P1
+    def f1(x):
+        return (144*b(well)* x) + math.log(144*x) - ( (b(well)*float(well["pwh"])) + math.log(float(well["pwh"])) + ((a(well) + (a(well)*(d(well)**2)*e(well))) * float(well["H"])))
+
+    # The differential of the function f1
+    def df1dx(x):
+        return (144*b(well)) + (1/x)
+
+    # The function to find P2
+    def f2(x):
+        return (995328*b(well)*(x**3)) + (10368*(x**2)) - ( (a(well)*(c(well)**2)*e(well)*float(well["H"])) + ( (b(well)*(float(well["pwh"])**3)/3) + (float(well["pwh"])**2)/2 ))
+
+    # The differential of the function f2
+    def df2dx(x):
+        return (3*(995328*b(well))*(x**2)) + (2*(10368)*x)
+
+    # The function to find P3
+    def f3(x):
+        return (5184*b(well)*(x**2)) + (72*x) - ( (a(well)*c(well)*d(well)*e(well)*float(well["H"])) + ((b(well)*(float(well["H"])**2))/4) + (float(well["pwh"])/2) )
+
+    # The differential of the function f3
+    def df3dx(x):
+        return (2*5184*b(well)*x) + 72
+
+    P1 = Newton(f1, df1dx, x=1000, eps=1.0e-6)  # Use newton's method to get p1
+
+    P2 = Newton(f2, df2dx, x=1000, eps=1.0e-6)  # Use Newton's method to get P2
+
+    P3 = Newton(f3, df3dx, x=1000, eps=1.0e-6)  # Use Newton's method to get P3
+
+    print(P1, P2, P3)
+    
+    P = P1 + P2 + P3
+
+    Tpc = 168 + 325*(float(well["yg"])) + 12.5*(float(well["yg"])**2)
+
+    Ppc = 677 + 15.0*(float(well["yg"])) + 37.5*(float(well["yg"])**2)
+
+    Tpr = float(well["T"]) / Tpc
+
+    Ppr = P / Ppc
+
+    output.append([well["well"], Ppr, Tpr, P, ''])
+
+with open('results.csv', 'w') as File:
+    writer = csv.writer(File)
+            
+    writer.writerows(output)
